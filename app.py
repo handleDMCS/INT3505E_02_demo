@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, make_response
 from flask_restx import Api, Resource, fields
 import sqlite3
 import jwt
@@ -139,15 +139,20 @@ class Login(Resource):
 @ns.route('/')
 class BookList(Resource):
     @ns.doc('list_books', security='Bearer')
-    @ns.marshal_list_with(book_model)
     @token_required()
     def get(self, current_user):
-        '''List all books (requires authentication)'''
+        '''List all books (requires authentication) - Cached for 5 minutes'''
         conn = get_db()
         cursor = conn.execute('SELECT id, name, status FROM books')
         books = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        return books
+        
+        # Create response with cache headers
+        response = make_response(books, 200)
+        response.headers['Cache-Control'] = 'private, max-age=300'  # Cache for 5 minutes
+        response.headers['Content-Type'] = 'application/json'
+        
+        return response
 
     @ns.doc('create_book', security='Bearer')
     @ns.expect(book_input)
@@ -171,17 +176,23 @@ class BookList(Resource):
 @ns.param('id', 'The book identifier')
 class Book(Resource):
     @ns.doc('get_book', security='Bearer')
-    @ns.marshal_with(book_model)
     @token_required()
     def get(self, id, current_user):
-        '''Get a book by ID (requires authentication)'''
+        '''Get a book by ID (requires authentication) - Cached for 5 minutes'''
         conn = get_db()
         cursor = conn.execute('SELECT id, name, status FROM books WHERE id = ?', (id,))
         book = cursor.fetchone()
         conn.close()
+        
         if book is None:
             api.abort(404, f"Book {id} not found")
-        return dict(book)
+        
+        # Create response with cache headers
+        response = make_response(dict(book), 200)
+        response.headers['Cache-Control'] = 'private, max-age=300'  # Cache for 5 minutes
+        response.headers['Content-Type'] = 'application/json'
+        
+        return response
 
     @ns.doc('update_book', security='Bearer')
     @ns.expect(book_input)
